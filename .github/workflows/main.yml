@@ -53,7 +53,7 @@ jobs:
          echo 'export PATH=/bin:/usr/bin' >> rootfs/init
          echo 'export HOME=/root' >> rootfs/init
          echo 'xinit' >> rootfs/init
-        chmod +x rootfs/init
+         chmod +x rootfs/init
  
       - name: Create init script
         run: |
