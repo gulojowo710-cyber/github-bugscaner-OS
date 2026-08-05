@@ -1,48 +1,50 @@
-name: Build BugScannerOS CLI
+name: Build Minimal x86 Linux OS
+
 on:
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
+  steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
 
-    - name: Install Tools Build
-      run: sudo apt-get update && sudo apt-get install -y wget cpio gzip xorriso busybox-static curl nmap
-
-    - name: Download Kernel + Siapin Folder
+    - name: Install Buildroot Dependencies
       run: |
-        mkdir -p iso rootfs/bin rootfs/sbin rootfs/usr/bin rootfs/boot rootfs/lib
-        wget http://tinycorelinux.net/15.x/x86/release/distribution_files/vmlinuz -O iso/vmlinuz
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          libncurses-dev \
+          bison \
+          flex \
+          bc \
+          rsync \
+          unzip \
+          wget \
+          cpio
 
-    - name: Copy Busybox + curl + nmap
+    - name: Clone Buildroot
       run: |
-        cp /bin/busybox rootfs/bin/busybox
-        for i in sh mount ln; do ln -s busybox rootfs/bin/$i; done
-        
-        cp /usr/bin/curl rootfs/usr/bin/curl
-        cp /usr/bin/nmap rootfs/usr/bin/nmap
-        ldd /usr/bin/curl /usr/bin/nmap | grep "=> /" | awk '{print $3}' | xargs -I {} cp -v {} rootfs/lib/ 2>/dev/null || true
+        git clone --depth 1 --branch 2024.02.x https://github.com
 
-    - name: Buat init
+    - name: Configure Buildroot for QEMU x86_64
       run: |
-        echo '#!/bin/sh' > rootfs/init
-        echo 'mount -t proc /proc' >> rootfs/init
-        echo 'mount -t sysfs /sys' >> rootfs/init
-        echo 'mount -t devtmpfs /dev' >> rootfs/init
-        echo 'echo "BugScannerOS CLI Ready. Ketik: curl / nmap"' >> rootfs/init
-        echo '/bin/sh' >> rootfs/init
-        chmod +x rootfs/init
-        ln -s /init rootfs/sbin/init  # <-- INI PENTING
+        cd buildroot
+        make qemu_x86_64_defconfig
 
-    - name: Pack to ISO
+    - name: Build Operating System
       run: |
-        cd rootfs && find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
-        cd ../iso && xorriso -as mkisofs -o BugScanner-CLI.iso -b vmlinuz .
+        cd buildroot
+        # Use available CPU cores for faster compilation
+        make -j$(nproc)
 
-    - name: Upload ISO
+    - name: Upload OS Artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: BugScanner-CLI
-        path: iso/BugScanner-CLI.iso
+        name: x86-minimal-linux
+        path: |
+          buildroot/output/images/bzImage
+          buildroot/output/images/rootfs.ext2
