@@ -28,7 +28,7 @@ jobs:
 
      - name: Clone Buildroot
        run: |
-        git clone --depth 1 --branch 2024.02.x https://github.com
+        git clone --depth 1 --branch 2024.02.x https://github.com/buildroot/buildroot.git
 
      - name: Configure Buildroot for QEMU x86_64
        run: |
