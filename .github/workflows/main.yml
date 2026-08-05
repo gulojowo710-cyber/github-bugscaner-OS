@@ -1,106 +1,57 @@
-name: Build BugScannerOS-Pro
-
+name: Build BugScannerOS
 on:
-  workflow_dispatch:  # biar bisa pencet tombol Run manual
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Install tools
-        run: |
-         sudo apt-get update
-         sudo apt-get install -y build-essential git wget cpio gzip xorriso libssl-dev libx11-dev libxft-dev libxinerama-dev xserver-xorg-core xinit xserver-xorg-video-vesa xfonts-base
+    - name: Install GUI Lengkap
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential wget cpio gzip xorriso xserver-xorg-core xinit xserver-xorg-video-vesa xfonts-base jwm xterm
 
-      - name: Build Xorg + deps
-        run: |
-         mkdir -p rootfs/usr/bin rootfs/usr/lib/xorg rootfs/usr/share/fonts
-         cp /usr/bin/Xorg rootfs/usr/bin/
-         cp /usr/bin/xinit rootfs/usr/bin/
-         cp -r /usr/lib/xorg/* rootfs/usr/lib/xorg/
-         cp -r /usr/share/fonts/* rootfs/usr/share/fonts/
+    - name: Download Kernel TinyCore
+      run: |
+        wget http://tinycorelinux.net/15.x/x86/release/distribution_files/vmlinuz
+        mkdir -p kernel iso
+        mv vmlinuz kernel/
 
+    - name: Copy GUI ke rootfs
+      run: |
+        mkdir -p rootfs/usr/bin rootfs/usr/lib/xorg rootfs/usr/share
+        cp /usr/bin/Xorg rootfs/usr/bin/
+        cp /usr/bin/xinit rootfs/usr/bin/
+        cp /usr/bin/jwm rootfs/usr/bin/
+        cp /usr/bin/xterm rootfs/usr/bin/
+        cp -r /usr/lib/xorg rootfs/usr/lib/
+        cp -r /usr/share/* rootfs/usr/share/
 
-      - name: Download Kernel
-        run: |
-          mkdir -p kernel
-          wget http://tinycorelinux.net/15.x/x86_64/release/distribution_files/vmlinuz64 -O kernel/vmlinuz
+    - name: Buat init + .xinitrc
+      run: |
+        echo '#!/bin/busybox sh' > rootfs/init
+        echo 'mount -t proc proc /proc' >> rootfs/init
+        echo 'mount -t sysfs sysfs /sys' >> rootfs/init
+        echo 'mount -t devtmpfs dev /dev' >> rootfs/init
+        echo 'export PATH=/bin:/usr/bin' >> rootfs/init
+        echo 'export HOME=/root' >> rootfs/init
+        echo 'xinit' >> rootfs/init
+        chmod +x rootfs/init
+        
+        echo 'exec jwm' > rootfs/root/.xinitrc
+        chmod +x rootfs/root/.xinitrc
 
-      - name: Build toybox static
-        run: |
-          git clone https://github.com/landley/toybox
-          cd toybox
-          make defconfig
-          echo "CONFIG_STATIC=y" >> .config
-          make -j$(nproc)
-          mkdir -p ../rootfs/bin
-          cp toybox ../rootfs/bin/busybox
-
-      - name: Build dwm static
-        run: |
-          git clone https://git.suckless.org/dwm
-          cd dwm
-          sed -i 's/CFLAGS = -g/CFLAGS = -static -O2/' config.mk
-          make
-          mkdir -p ../rootfs/usr/bin
-          cp dwm ../rootfs/usr/bin/
-
-      - name: Build st static
-        run: |
-          git clone https://git.suckless.org/st
-          cd st
-          sed -i 's/CFLAGS = -g/CFLAGS = -static -O2/' config.mk
-          make
-          cp st ../rootfs/usr/bin/
-          
-      - name: Build Xorg
-        run: |
-         sudo apt-get install -y xserver-xorg-core xinit
-         mkdir -p rootfs/usr/bin
-         cp /usr/bin/Xorg rootfs/usr/bin/
-         cp /usr/bin/xinit rootfs/usr/bin/
-      - name: Create init script
-        run: |
-         mkdir -p rootfs/root
-         echo '#!/bin/busybox sh' > rootfs/init
-         echo 'mount -t proc proc /proc' >> rootfs/init
-         echo 'mount -t sysfs sysfs /sys' >> rootfs/init
-         echo 'mount -t devtmpfs dev /dev' >> rootfs/init
-         echo 'export PATH=/bin:/usr/bin' >> rootfs/init
-         echo 'export HOME=/root' >> rootfs/init
-         echo 'xinit' >> rootfs/init  # PENTING: pake xinit
-         chmod +x rootfs/init
-    
-         echo 'exec dwm' > rootfs/root/.xinitrc  # PENTING: pake exec
-         chmod +x rootfs/root/.xinitrc
-      
-      - name: Pack to ISO
-        run: |
-         sudo apt-get install -y isolinux syslinux
-         mkdir -p iso/boot
-         cp kernel/vmlinuz iso/boot/
-    
-         # Bikin rootfs.gz
-         cd rootfs
-         find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
-         cd ../iso
-    
-         # Bikin ISO beneran bisa boot
-         xorriso -as mkisofs \
-         -iso-level 3 \
-         -full-iso9660-filenames \
-         -volid "BUGSCANNER" \
-         -eltorito-boot boot/vmlinuz \
-         -no-emul-boot \
-         -boot-load-size 4 \
-         -boot-info-table \
-         -o BugScanner-Pro.iso \
-         .
-      - name: Upload ISO
-        uses: actions/upload-artifact@v4
-        with:
-          name: BugScanner-Pro
-          path: iso/BugScanner-Pro.iso
+    - name: Pack to ISO
+      run: |
+        cd rootfs
+        find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
+        cd ../iso
+        xorriso -as mkisofs -iso-level 3 -full-iso9660-filenames -volid "BUGSCANNER" -eltorito-boot boot/vmlinuz -no-emul-boot -boot-load-size 4 -boot-info-table -o BugScanner-Pro.iso .
+        
+    - name: Upload ISO
+      uses: actions/upload-artifact@v4
+      with:
+        name: BugScanner-Pro
+        path: iso/BugScanner-Pro.iso
