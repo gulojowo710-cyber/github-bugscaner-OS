@@ -1,89 +1,60 @@
-name: Build BugScannerOS-Pro
-
+name: Build BugScannerOS CLI
 on:
-  workflow_dispatch:  # biar bisa pencet tombol Run manual
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
-      - name: Install tools
-        run: |
-         sudo apt-get update
-         sudo apt-get install -y build-essential git wget cpio gzip xorriso libssl-dev libx11-dev libxft-dev libxinerama-dev xserver-xorg-core xinit xserver-xorg-video-vesa xfonts-base
-      - name: Build Xorg + deps
-        run: |
-         mkdir -p rootfs/usr/bin rootfs/usr/lib/xorg rootfs/usr/share/fonts
-         cp /usr/bin/Xorg rootfs/usr/bin/
-         cp /usr/bin/xinit rootfs/usr/bin/
-         cp -r /usr/lib/xorg/* rootfs/usr/lib/xorg/
-         cp -r /usr/share/fonts/* rootfs/usr/share/fonts/
-      - name: Download Kernel
-        run: |
-          mkdir -p kernel
-          wget http://tinycorelinux.net/15.x/x86_64/release/distribution_files/vmlinuz64 -O kernel/vmlinuz
-      - name: Install GUI Lengkap
-        run: |
-         sudo apt-get update
-         sudo apt-get install -y xserver-xorg-core xinit xserver-xorg-video-vesa xfonts-base jwm xterm
- 
-      - name: Copy GUI ke rootfs
-        run: |
-         mkdir -p rootfs/usr/bin rootfs/usr/lib/xorg rootfs/usr/share
-         cp /usr/bin/Xorg rootfs/usr/bin/
-         cp /usr/bin/xinit rootfs/usr/bin/
-         cp /usr/bin/jwm rootfs/usr/bin/
-         cp /usr/bin/xterm rootfs/usr/bin/
-         cp -r /usr/lib/xorg rootfs/usr/lib/
-         cp -r /usr/share/* rootfs/usr/share/
-      
-      - name: Buat .xinitrc JWM
-        run: |
-          make -p rootfs/root
-          echo 'exec jwm' > rootfs/root/.xinitr
- 
-      - name: Create init script
-        run: |
-         mkdir -p rootfs/root
-         echo '#!/bin/busybox sh' > rootfs/init
-         echo 'mount -t proc proc /proc' >> rootfs/init
-         echo 'mount -t sysfs sysfs /sys' >> rootfs/init
-         echo 'mount -t devtmpfs dev /dev' >> rootfs/init
-         echo 'export PATH=/bin:/usr/bin' >> rootfs/init
-         echo 'export HOME=/root' >> rootfs/init
-         echo 'xinit' >> rootfs/init  # PENTING: pake xinit
-         chmod +x rootfs/init
-    
-         echo 'exec dwm' > rootfs/root/.xinitrc  # PENTING: pake exec
-         chmod +x rootfs/root/.xinitrc
-      
-      - name: Pack to ISO
-        run: |
-         sudo apt-get install -y isolinux syslinux
-         mkdir -p iso/boot
-         cp kernel/vmlinuz iso/boot/
-    
-         # Bikin rootfs.gz
-         cd rootfs
-         find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
-         cd ../iso
-    
-         # Bikin ISO beneran bisa boot
-         xorriso -as mkisofs \
-         -iso-level 3 \
-         -full-iso9660-filenames \
-         -volid "BUGSCANNER" \
-         -eltorito-boot boot/vmlinuz \
-         -no-emul-boot \
-         -boot-load-size 4 \
-         -boot-info-table \
-         -o BugScanner-Pro.iso \
-         .
-      - name: Upload ISO
-        uses: actions/upload-artifact@v4
-        with:
-          name: BugScanner-Pro
-          path: iso/BugScanner-Pro.
+    - name: Install Tools Build
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential wget cpio gzip xorriso busybox-static curl nmap
+
+    - name: Download Kernel TinyCore
+      run: |
+        mkdir -p iso rootfs/bin rootfs/sbin rootfs/usr/bin rootfs/boot
+        wget http://tinycorelinux.net/15.x/x86/release/distribution_files/vmlinuz -O iso/vmlinuz
+
+    - name: Copy Busybox + curl + nmap ke rootfs
+      run: |
+        # Busybox buat perintah dasar: ls, cd, sh, mount
+        cp /bin/busybox rootfs/bin/sh
+        cp /bin/busybox rootfs/bin/busybox
+        
+        # Copy curl dan nmap static dari apt
+        cp /usr/bin/curl rootfs/usr/bin/curl
+        cp /usr/bin/nmap rootfs/usr/bin/nmap
+        
+        # Copy library yang dibutuhin curl dan nmap
+        ldd /usr/bin/curl | grep "=> /" | awk '{print $3}' | xargs -I {} cp -v {} rootfs/lib/ 2>/dev/null || true
+        ldd /usr/bin/nmap | grep "=> /" | awk '{print $3}' | xargs -I {} cp -v {} rootfs/lib/ 2>/dev/null || true
+
+    - name: Buat init + folder dasar
+      run: |
+        echo '#!/bin/busybox sh' > rootfs/init
+        echo 'mount -t proc /proc' >> rootfs/init
+        echo 'mount -t sysfs sysfs /sys' >> rootfs/init
+        echo 'mount -t devtmpfs dev /dev' >> rootfs/init
+        echo 'export PATH=/bin:/sbin:/usr/bin' >> rootfs/init
+        echo 'echo "================================="' >> rootfs/init
+        echo 'echo "  BugScannerOS CLI v1.0 Ready"' >> rootfs/init
+        echo 'echo "  Tools: curl, nmap, busybox"' >> rootfs/init
+        echo 'echo "================================="' >> rootfs/init
+        echo '/bin/sh' >> rootfs/init
+        chmod +x rootfs/init
+
+    - name: Pack to ISO
+      run: |
+        cd rootfs
+        find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
+        cd ../iso
+        xorriso -as mkisofs -iso-level 3 -full-iso9660-filenames -volid "BUGSCANNER" -eltorito-boot vmlinuz -no-emul-boot -boot-load-size 4 -boot-info-table -o BugScanner-CLI.iso .
+        
+    - name: Upload ISO
+      uses: actions/upload-artifact@v4
+      with:
+        name: BugScanner-CLI
+        path: iso/BugScanner-CLI.iso
