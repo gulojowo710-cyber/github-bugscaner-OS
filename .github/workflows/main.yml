@@ -43,7 +43,7 @@ jobs:
       - name: Buat .xinitrc JWM
         run: |
           make -p rootfs/root
-         echo 'exec jwm' > rootfs/root/.xinitr
+          echo 'exec jwm' > rootfs/root/.xinitr
  
       - name: Create init script
         run: |
