@@ -31,6 +31,8 @@ jobs:
 
     - name: Buat init + .xinitrc
       run: |
+        mkdir -p rootfs/root
+        
         echo '#!/bin/busybox sh' > rootfs/init
         echo 'mount -t proc proc /proc' >> rootfs/init
         echo 'mount -t sysfs sysfs /sys' >> rootfs/init
