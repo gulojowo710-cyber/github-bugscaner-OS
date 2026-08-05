@@ -45,6 +45,13 @@ jobs:
           sed -i 's/CFLAGS = -g/CFLAGS = -static -O2/' config.mk
           make
           cp st ../rootfs/usr/bin/
+          
+      - name: Build Xorg
+        run: |
+         sudo apt-get install -y xserver-xorg-core xinit
+         mkdir -p rootfs/usr/bin
+         cp /usr/bin/Xorg rootfs/usr/bin/
+         cp /usr/bin/xinit rootfs/usr/bin/
 
       - name: Create init script
         run: |
