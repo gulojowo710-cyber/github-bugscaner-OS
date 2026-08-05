@@ -46,15 +46,6 @@ jobs:
           make
           cp st ../rootfs/usr/bin/
 
-      - name: Build nmap static
-        run: |
-          wget https://nmap.org/dist/nmap-7.94.tar.bz2
-          tar xf nmap-7.94.tar.bz2
-          cd nmap-7.94
-          ./configure --disable-nmap-update --static
-          make -j$(nproc)
-          cp nmap ../rootfs/usr/bin/
-
       - name: Build curl static
         run: |
           wget https://curl.se/download/curl-8.6.0.tar.gz
