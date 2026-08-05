@@ -45,8 +45,8 @@ jobs:
         echo 'exec jwm' > rootfs/root/.xinitrc
         chmod +x rootfs/root/.xinitrc
 
-     - name: Pack to ISO
-       run: |
+    - name: Pack to ISO
+      run: |
         cd rootfs
         find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
         cd ../iso
