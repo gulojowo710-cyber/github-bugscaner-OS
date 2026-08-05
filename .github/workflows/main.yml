@@ -1,0 +1,93 @@
+name: Build BugScannerOS-Pro
+
+on:
+  workflow_dispatch:  # biar bisa pencet tombol Run manual
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git wget cpio gzip xorriso libssl-dev
+
+      - name: Download Kernel
+        run: |
+          mkdir -p kernel
+          wget http://tinycorelinux.net/15.x/x86_64/release/distribution_files/vmlinuz64 -O kernel/vmlinuz
+
+      - name: Build toybox static
+        run: |
+          git clone https://github.com/landley/toybox
+          cd toybox
+          make defconfig
+          echo "CONFIG_STATIC=y" >> .config
+          make -j$(nproc)
+          mkdir -p ../rootfs/bin
+          cp toybox ../rootfs/bin/busybox
+
+      - name: Build dwm static
+        run: |
+          git clone https://git.suckless.org/dwm
+          cd dwm
+          sed -i 's/CFLAGS = -g/CFLAGS = -static -O2/' config.mk
+          make
+          mkdir -p ../rootfs/usr/bin
+          cp dwm ../rootfs/usr/bin/
+
+      - name: Build st static
+        run: |
+          git clone https://git.suckless.org/st
+          cd st
+          sed -i 's/CFLAGS = -g/CFLAGS = -static -O2/' config.mk
+          make
+          cp st ../rootfs/usr/bin/
+
+      - name: Build nmap static
+        run: |
+          wget https://nmap.org/dist/nmap-7.94.tar.bz2
+          tar xf nmap-7.94.tar.bz2
+          cd nmap-7.94
+          ./configure --disable-nmap-update --static
+          make -j$(nproc)
+          cp nmap ../rootfs/usr/bin/
+
+      - name: Build curl static
+        run: |
+          wget https://curl.se/download/curl-8.6.0.tar.gz
+          tar xf curl-8.6.0.tar.gz
+          cd curl-8.6.0
+          ./configure --disable-shared --enable-static
+          make -j$(nproc)
+          cp src/curl ../rootfs/usr/bin/
+
+      - name: Create init script
+        run: |
+          mkdir -p rootfs/root
+          echo '#!/bin/busybox sh' > rootfs/init
+          echo 'mount -t proc proc /proc' >> rootfs/init
+          echo 'mount -t sysfs sysfs /sys' >> rootfs/init
+          echo 'mount -t devtmpfs dev /dev' >> rootfs/init
+          echo 'export PATH=/bin:/usr/bin' >> rootfs/init
+          echo 'startx' >> rootfs/init
+          chmod +x rootfs/init
+          echo 'exec dwm' > rootfs/root/.xinitrc
+
+      - name: Pack to ISO
+        run: |
+          mkdir -p iso/boot
+          cp kernel/vmlinuz iso/boot/
+          cd rootfs
+          find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
+          cd ../iso
+          xorriso -as mkisofs -o BugScanner-Pro.iso -b boot/vmlinuz .
+
+      - name: Upload ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: BugScanner-Pro
+          path: iso/BugScanner-Pro.iso
