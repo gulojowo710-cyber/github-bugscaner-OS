@@ -42,18 +42,8 @@ jobs:
       
       - name: Buat .xinitrc JWM
         run: |
-         echo 'exec jwm' > rootfs/root/.xinitrc
-    
-      - name: Buat init
-        run: |
-         echo '#!/bin/busybox sh' > rootfs/init
-         echo 'mount -t proc proc /proc' >> rootfs/init
-         echo 'mount -t sysfs sysfs /sys' >> rootfs/init
-         echo 'mount -t devtmpfs dev /dev' >> rootfs/init
-         echo 'export PATH=/bin:/usr/bin' >> rootfs/init
-         echo 'export HOME=/root' >> rootfs/init
-         echo 'xinit' >> rootfs/init
-         chmod +x rootfs/init
+          make -p rootfs/root
+         echo 'exec jwm' > rootfs/root/.xinitr
  
       - name: Create init script
         run: |
