@@ -9,11 +9,11 @@ jobs:
   build:
     runs-on: ubuntu-latest
   steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+     - name: Checkout Repository
+       uses: actions/checkout@v4
 
-    - name: Install Buildroot Dependencies
-      run: |
+     - name: Install Buildroot Dependencies
+       run: |
         sudo apt-get update
         sudo apt-get install -y \
           build-essential \
@@ -26,25 +26,24 @@ jobs:
           wget \
           cpio
 
-    - name: Clone Buildroot
-      run: |
+     - name: Clone Buildroot
+       run: |
         git clone --depth 1 --branch 2024.02.x https://github.com
 
-    - name: Configure Buildroot for QEMU x86_64
-      run: |
+     - name: Configure Buildroot for QEMU x86_64
+       run: |
         cd buildroot
         make qemu_x86_64_defconfig
 
-    - name: Build Operating System
-      run: |
+     - name: Build Operating System
+       run: |
         cd buildroot
         # Use available CPU cores for faster compilation
         make -j$(nproc)
 
-    - name: Upload OS Artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: x86-minimal-linux
-        path: |
-          buildroot/output/images/bzImage
-          buildroot/output/images/rootfs.ext2
+     - name: Upload OS Artifacts
+       uses: actions/upload-artifact@v4
+       name: x86-minimal-linux
+      path: |
+         buildroot/output/images/bzImage
+         buildroot/output/images/rootfs.ext2
