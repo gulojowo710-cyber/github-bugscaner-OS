@@ -60,13 +60,26 @@ jobs:
 
       - name: Pack to ISO
         run: |
-          mkdir -p iso/boot
-          cp kernel/vmlinuz iso/boot/
-          cd rootfs
-          find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
-          cd ../iso
-          xorriso -as mkisofs -o BugScanner-Pro.iso -b boot/vmlinuz .
-
+         sudo apt-get install -y isolinux syslinux
+         mkdir -p iso/boot
+         cp kernel/vmlinuz iso/boot/
+    
+         # Bikin rootfs.gz
+         cd rootfs
+         find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
+         cd ../iso
+    
+         # Bikin ISO beneran bisa boot
+         xorriso -as mkisofs \
+         -iso-level 3 \
+         -full-iso9660-filenames \
+         -volid "BUGSCANNER" \
+         -eltorito-boot boot/vmlinuz \
+         -no-emul-boot \
+         -boot-load-size 4 \
+         -boot-info-table \
+         -o BugScanner-Pro.iso \
+         .
       - name: Upload ISO
         uses: actions/upload-artifact@v4
         with:
