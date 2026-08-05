@@ -15,9 +15,9 @@ jobs:
 
     - name: Download Kernel TinyCore
       run: |
-        wget http://tinycorelinux.net/15.x/x86/release/distribution_files/vmlinuz
-        mkdir -p kernel iso
-        mv vmlinuz kernel/
+       wget http://tinycorelinux.net/15.x/x86/release/distribution_files/vmlinuz
+       mkdir -p rootfs/boot  # <-- bikin folder boot
+       mv vmlinuz rootfs/boot/vmlinuz  # <-- pindahin ke sini
 
     - name: Copy GUI ke rootfs
       run: |
@@ -45,8 +45,8 @@ jobs:
         echo 'exec jwm' > rootfs/root/.xinitrc
         chmod +x rootfs/root/.xinitrc
 
-    - name: Pack to ISO
-      run: |
+     - name: Pack to ISO
+       run: |
         cd rootfs
         find . | cpio -o -H newc | gzip > ../iso/rootfs.gz
         cd ../iso
