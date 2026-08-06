@@ -1,46 +1,37 @@
-name: Buildroot Linux X86 with GUI and Cache
+name: Build Minimal x86 Linux OS
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+     - name: Checkout Repository
+       uses: actions/checkout@v4
 
-    - name: Install dependencies
-      run: |
+     - name: Install Buildroot Dependencies
+       run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential libncurses5-dev libssl-dev build-essential \
-          bison flex gettext libelf-dev bc cpio unzip rsync wget ccache
-
-    - name: Download Buildroot
-      run: |
-        git clone --depth=1 https://buildroot.com/buildroot/buildroot.git
-
-    # Mengaktifkan Cache GitHub untuk folder download (dl) dan ccache Buildroot
-    - name: Cache Buildroot Downloads and ccache
-      uses: actions/cache@v4
-      with:
-        path: |
-          buildroot/dl
-          ~/.buildroot-ccache
-        key: ${{ runner.os }}-buildroot-${{ hashFiles('buildroot/.config') }}
-        restore-keys: |
-          ${{ runner.os }}-buildroot-
-
-    - name: Configure Buildroot for x86 with GUI and ccache
-      run: |
+        sudo apt-get install -y \
+          build-essential \
+          libncurses-dev \
+          bison \
+          flex \
+          bc \
+          rsync \
+          unzip \
+          wget \
+          cpio
+     - name: Clone Buildroot
+       run: |
+        git clone --depth 1 --branch 2024.02.x https://github.com/buildroot/buildroot.git
+     - name: Configure Buildroot for QEMU x86_64
+       run: |
         cd buildroot
-        make qemu_x86_defconfig
-        
+        make qemu_x86_64_defconfig
         # Config dasar buat bootable disk
         echo "BR2_TARGET_ROOTFS_TAR=y" >> .config
         echo "BR2_TARGET_ROOTFS_EXT2=y" >> .config
@@ -48,7 +39,7 @@ jobs:
         echo "BR2_TARGET_GRUB2=y" >> .config
         echo "BR2_TARGET_GRUB2_BOOT_PARTITION=y" >> .config
     
-        # Config GUI dari screenshot kamu
+        # Config GUI
         echo "BR2_PACKAGE_XORG7=y" >> .config
         echo "BR2_PACKAGE_XSERVER_XORG_SERVER=y" >> .config
         echo "BR2_PACKAGE_XSERVER_XORG_SERVER_MODULAR=y" >> .config
@@ -62,17 +53,15 @@ jobs:
         echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
         echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
         
-        make olddefconfig
-
-    - name: Build System
-      run: |
+     - name: Build Operating System
+       run: |
         cd buildroot
-        make j2
-    
-    - name: Upload Disk Image Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Linux X86 with GUI and Cache
-        path: buildroot/output/images/disk.img
-        retention-days: 14
-        if-no-files-found: error
+        # Use available CPU cores for faster compilation
+        make -j$(nproc)
+     - name: Upload OS Artifacts
+       uses: actions/upload-artifact@v4
+       with:
+        name: x86-minimal-linux
+        path: |
+          buildroot/output/images/bzImage
+          buildroot/output/images/rootfs.ext2
