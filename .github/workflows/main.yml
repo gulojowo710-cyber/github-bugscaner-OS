@@ -1,37 +1,45 @@
-name: Build Minimal x86 Linux OS
+name: Buildroot Linux PC X86_64 Bootable Image
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    steps:
-     - name: Checkout Repository
-       uses: actions/checkout@v4
 
-     - name: Install Buildroot Dependencies
-       run: |
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          libncurses-dev \
-          bison \
-          flex \
-          bc \
-          rsync \
-          unzip \
-          wget \
-          cpio
-     - name: Clone Buildroot
-       run: |
-        git clone --depth 1 --branch 2024.02.x https://github.com/buildroot/buildroot.git
-     - name: Configure Buildroot for x86 with GUI and ccache
-       run: |
+        sudo apt-get install -y build-essential libncurses5-dev libssl-dev build-essential \
+          bison flex gettext libelf-dev bc cpio unzip rsync wget ccache
+
+    - name: Download Buildroot
+      run: |
+        git clone --depth=1 https://buildroot.com/buildroot/buildroot.git
+
+    - name: Cache Buildroot Downloads and ccache
+      uses: actions/cache@v4
+      with:
+        path: |
+          buildroot/dl
+          ~/.buildroot-ccache
+        key: ${{ runner.os }}-buildroot-pc-x86_64-${{ hashFiles('buildroot/.config') }}
+        restore-keys: |
+          ${{ runner.os }}-buildroot-pc-x86_64-
+
+    - name: Configure Buildroot for PC x86_64 with GUI and ccache
+      run: |
         cd buildroot
-        make qemu_x86_64_defconfig
+        # PERBAIKAN 1: Menggunakan target PC generik untuk membuat Bootable Disk Image
+        make pc_x86_64_defconfig
         
         # Config dasar buat bootable disk
         echo "BR2_TARGET_ROOTFS_TAR=y" >> .config
@@ -40,12 +48,16 @@ jobs:
         echo "BR2_TARGET_GRUB2=y" >> .config
         echo "BR2_TARGET_GRUB2_BOOT_PARTITION=y" >> .config
     
-        # SOLUSI: Mengaktifkan libglib2 dan dependensi wajib GUI
+        # PERBAIKAN 2: Mengaktifkan seluruh paket dependensi wajib untuk GUI & Openbox
         echo "BR2_PACKAGE_LIBGLIB2=y" >> .config
         echo "BR2_PACKAGE_FONTCONFIG=y" >> .config
         echo "BR2_PACKAGE_XLIB_LIBX11=y" >> .config
+        echo "BR2_PACKAGE_LIBPNG=y" >> .config
+        echo "BR2_PACKAGE_PIXMAN=y" >> .config
+        echo "BR2_PACKAGE_LIBXKBCOMMON=y" >> .config
+        echo "BR2_PACKAGE_PANGO=y" >> .config
 
-        # Config GUI asal
+        # Config GUI
         echo "BR2_PACKAGE_XORG7=y" >> .config
         echo "BR2_PACKAGE_XSERVER_XORG_SERVER=y" >> .config
         echo "BR2_PACKAGE_XSERVER_XORG_SERVER_MODULAR=y" >> .config
@@ -61,21 +73,16 @@ jobs:
         
         make olddefconfig
 
-       
-        # AKTIFKAN CCACHE DI BUILDROOT
-        echo "BR2_CCACHE=y" >> .config
-        echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
-        echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
-        
-     - name: Build Operating System
-       run: |
+    - name: Build System
+      run: |
         cd buildroot
-        # Use available CPU cores for faster compilation
-        make -j$(nproc)
-     - name: Upload OS Artifacts
-       uses: actions/upload-artifact@v4
-       with:
-        name: x86-minimal-linux
-        path: |
-          buildroot/output/images/bzImage
-          buildroot/output/images/rootfs.ext2
+        make
+    
+    - name: Upload Bootable Disk Image Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: Linux-PC-x86_64-GUI-Bootable
+        # PERBAIKAN 3: Jalur berkas gambar disk tunggal hasil racikan target pc_x86_64
+        path: buildroot/output/images/sdcard.img
+        retention-days: 14
+        if-no-files-found: error
