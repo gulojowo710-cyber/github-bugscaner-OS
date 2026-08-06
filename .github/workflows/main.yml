@@ -39,7 +39,7 @@ jobs:
     - name: Configure Buildroot for x86 with GUI and ccache
       run: |
         cd buildroot
-        make pc_x86_64_bios_defconfig
+        make qemu_x86_defconfig
         
         # Config dasar buat bootable disk
         echo "BR2_TARGET_ROOTFS_TAR=y" >> .config
