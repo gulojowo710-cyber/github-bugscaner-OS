@@ -28,10 +28,11 @@ jobs:
      - name: Clone Buildroot
        run: |
         git clone --depth 1 --branch 2024.02.x https://github.com/buildroot/buildroot.git
-     - name: Configure Buildroot for QEMU x86_64
+     - name: Configure Buildroot for x86 with GUI and ccache
        run: |
         cd buildroot
         make qemu_x86_64_defconfig
+        
         # Config dasar buat bootable disk
         echo "BR2_TARGET_ROOTFS_TAR=y" >> .config
         echo "BR2_TARGET_ROOTFS_EXT2=y" >> .config
@@ -39,7 +40,12 @@ jobs:
         echo "BR2_TARGET_GRUB2=y" >> .config
         echo "BR2_TARGET_GRUB2_BOOT_PARTITION=y" >> .config
     
-        # Config GUI
+        # SOLUSI: Mengaktifkan libglib2 dan dependensi wajib GUI
+        echo "BR2_PACKAGE_LIBGLIB2=y" >> .config
+        echo "BR2_PACKAGE_FONTCONFIG=y" >> .config
+        echo "BR2_PACKAGE_XLIB_LIBX11=y" >> .config
+
+        # Config GUI asal
         echo "BR2_PACKAGE_XORG7=y" >> .config
         echo "BR2_PACKAGE_XSERVER_XORG_SERVER=y" >> .config
         echo "BR2_PACKAGE_XSERVER_XORG_SERVER_MODULAR=y" >> .config
@@ -47,6 +53,14 @@ jobs:
         echo "BR2_PACKAGE_XDRIVER_XF86_INPUT_LIBINPUT=y" >> .config
         echo "BR2_PACKAGE_OPENBOX=y" >> .config
         echo "BR2_PACKAGE_XTERM=y" >> .config
+       
+        # AKTIFKAN CCACHE DI BUILDROOT
+        echo "BR2_CCACHE=y" >> .config
+        echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
+        echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
+        
+        make olddefconfig
+
        
         # AKTIFKAN CCACHE DI BUILDROOT
         echo "BR2_CCACHE=y" >> .config
