@@ -39,7 +39,7 @@ jobs:
     - name: Configure Buildroot for x86 with GUI and ccache
       run: |
         cd buildroot
-        make qemu_x86_defconfig
+        make qemu_x86_64_defconfig
         
         # Config dasar buat bootable disk
         echo "BR2_TARGET_ROOTFS_TAR=y" >> .config
@@ -72,7 +72,7 @@ jobs:
     - name: Upload Disk Image Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: disk-img-x86-gui-cached
+        name: Linux X86 with GUI and Cache
         path: buildroot/output/images/disk.img
         retention-days: 14
         if-no-files-found: error
