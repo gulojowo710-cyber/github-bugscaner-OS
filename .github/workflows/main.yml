@@ -7,11 +7,13 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Download Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: x86-minimal-linux # nama artifact yg isi bzImage + rootfs.ext2
-          path: files
-
+       uses: actions/Download-artifact@v4
+       with:
+        name: x86-minimal-linux
+        path: |
+          buildroot/output/images/bzImage
+          buildroot/output/images/rootfs.
+          
       - name: Install deps for making bootable disk
         run: |
           sudo apt-get update
