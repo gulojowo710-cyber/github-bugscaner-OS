@@ -1,50 +1,75 @@
-name: Build Minimal x86 Linux OS
+name: Buildroot Linux X86 with GUI and Cache
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-     - name: Checkout Repository
-       uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-     - name: Install Buildroot Dependencies
-       run: |
+    - name: Install dependencies
+      run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          libncurses-dev \
-          bison \
-          flex \
-          bc \
-          rsync \
-          unzip \
-          wget \
-          cpio
+        sudo apt-get install -y build-essential libncurses5-dev libssl-dev build-essential \
+          bison flex gettext libelf-dev bc cpio unzip rsync wget qemu-system-x86 ccache
 
-     - name: Clone Buildroot
-       run: |
-        git clone --depth 1 --branch 2024.02.x https://github.com/buildroot/buildroot.git
+    - name: Download Buildroot
+      run: |
+        git clone --depth=1 https://buildroot.net/buildroot/buildroot.git
 
-     - name: Configure Buildroot for QEMU x86_64
-       run: |
-        cd buildroot
-        make qemu_x86_64_defconfig
-
-     - name: Build Operating System
-       run: |
-        cd buildroot
-        # Use available CPU cores for faster compilation
-        make -j$(nproc)
-
-     - name: Upload OS Artifacts
-       uses: actions/upload-artifact@v4
-       with:
-        name: x86-minimal-linux
+    # Mengaktifkan Cache GitHub untuk folder download (dl) dan ccache Buildroot
+    - name: Cache Buildroot Downloads and ccache
+      uses: actions/cache@v4
+      with:
         path: |
-          buildroot/output/images/bzImage
-          buildroot/output/images/rootfs.ext2
+          buildroot/dl
+          ~/.buildroot-ccache
+        key: ${{ runner.os }}-buildroot-${{ hashFiles('buildroot/.config') }}
+        restore-keys: |
+          ${{ runner.os }}-buildroot-
+
+    - name: Configure Buildroot for x86 with GUI and ccache
+      run: |
+        cd buildroot
+        make qemu_x86_defconfig
+        
+        # Konfigurasi GUI sebelumnya
+        echo "BR2_PACKAGE_XORG7=y" >> .config
+        echo "BR2_PACKAGE_XSERVER_XORG_SERVER=y" >> .config
+        echo "BR2_PACKAGE_XSERVER_XORG_SERVER_MODULAR=y" >> .config
+        echo "BR2_PACKAGE_XDRIVER_XF86_VIDEO_VESA=y" >> .config
+        echo "BR2_PACKAGE_XDRIVER_XF86_INPUT_LIBINPUT=y" >> .config
+        echo "BR2_PACKAGE_OPENBOX=y" >> .config
+        echo "BR2_PACKAGE_XTERM=y" >> .config
+        
+        # AKTIFKAN CCACHE DI BUILDROOT
+        echo "BR2_CCACHE=y" >> .config
+        echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
+        echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
+        
+        make olddefconfig
+
+    - name: Build System
+      run: |
+        cd buildroot
+        make
+
+    - name: Upload Kernel Image
+      uses: actions/artifacts@v4
+      with:
+        name: linux-kernel-x86-gui-cached
+        path: buildroot/output/images/bzImage
+
+    - name: Upload Root Filesystem
+      uses: actions/artifacts@v4
+      with:
+        name: rootfs-x86-gui-cached
+        path: buildroot/output/images/rootfs.tar
