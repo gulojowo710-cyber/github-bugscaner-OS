@@ -23,7 +23,7 @@ jobs:
 
     - name: Download Buildroot
       run: |
-        git clone --depth=1 https://buildroot.net/buildroot/buildroot.git
+        git clone --depth=1 https://buildroot.com/buildroot/buildroot.git
 
     # Mengaktifkan Cache GitHub untuk folder download (dl) dan ccache Buildroot
     - name: Cache Buildroot Downloads and ccache
