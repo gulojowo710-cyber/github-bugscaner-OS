@@ -12,19 +12,15 @@ jobs:
      - name: Checkout Repository
        uses: actions/checkout@v4
 
-     - name: Install Buildroot Dependencies
+     - name: Install dependencies
        run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          libncurses-dev \
-          bison \
-          flex \
-          bc \
-          rsync \
-          unzip \
-          wget \
-          cpio
+        sudo apt-get install -y build-essential git wget cpio unzip rsync bc file \
+        libncurses-dev libssl-dev libelf-dev python3 \
+        ccache sed make binutils gcc g++ bash patch gzip bzip2 perl \
+        tar xz-utils diffutils findutils util-linux \
+        libtool automake autoconf pkg-config \
+        mtools dosfstools genisoimage
      - name: Clone Buildroot
        run: |
         git clone --depth 1 --branch 2024.02.x https://github.com/buildroot/buildroot.git
@@ -44,6 +40,7 @@ jobs:
         echo "BR2_PACKAGE_LIBGLIB2=y" >> .config
         echo "BR2_PACKAGE_FONTCONFIG=y" >> .config
         echo "BR2_PACKAGE_XLIB_LIBX11=y" >> .config
+        echo "BR2_PACKAGE_OPKG=y" >> .config
 
         # Config GUI asal
         echo "BR2_PACKAGE_XORG7=y" >> .config
@@ -71,7 +68,7 @@ jobs:
        run: |
         cd buildroot
         # Use available CPU cores for faster compilation
-        make -j$(nproc)
+        make 
          # Masukkan langkah ini TEPAT SETELAH langkah "Build System" selesai
      - name: Create Bootable Disk Image using Genimage
        run: |
