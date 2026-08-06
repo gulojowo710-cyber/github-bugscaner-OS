@@ -1,88 +1,64 @@
-name: Buildroot Linux PC X86_64 Bootable Image
+name: Remaster Disk Image
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-  workflow_dispatch:
+on: workflow_dispatch
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-
+  remaster:
+    runs-on: ubuntu-22.04
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: x86-minimal-linux # nama artifact yg isi bzImage + rootfs.ext2
+          path: files
 
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential libncurses5-dev libssl-dev build-essential \
-          bison flex gettext libelf-dev bc cpio unzip rsync wget ccache
+      - name: Install deps for making bootable disk
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y grub-pc-bin mtools dosfstools parted qemu-utils
 
-    - name: Download Buildroot
-      run: |
-        git clone --depth=1 https://buildroot.com/buildroot/buildroot.git
+      - name: Create bootable disk.img
+        run: |
+          mkdir -p mnt/boot mnt/root
+          
+          # 1. Bikin file disk.img kosong 512MB
+          dd if=/dev/zero of=disk.img bs=1M count=512
+          
+          # 2. Bikin tabel partisi MBR + 1 partisi bootable
+          parted -s disk.img mklabel msdos
+          parted -s disk.img mkpart primary ext2 1MiB 100%
+          parted -s disk.img set 1 boot on
+          
+          # 3. Mount disk.img pake loop
+          LOOP=$(sudo losetup -fP --show disk.img)
+          sudo mkfs.ext2 ${LOOP}p1 -L root
+          
+          # 4. Copy rootfs.ext2 ke partisi
+          sudo mount ${LOOP}p1 mnt/root
+          sudo tar -xf files/rootfs.ext2 -C mnt/root
+          
+          # 5. Install GRUB ke disk.img
+          sudo grub-install --target=i386-pc --boot-directory=mnt/root/boot --modules="biosdisk part_msdos ext2" $LOOP
+          
+          # 6. Bikin grub.cfg
+          sudo mkdir -p mnt/root/boot/grub
+          cat <<EOF | sudo tee mnt/root/boot/grub/grub.cfg
+          set timeout=0
+          menuentry "Buildroot" {
+              linux /boot/bzImage root=/dev/sda1 console=ttyS0
+          }
+          EOF
+          
+          # 7. Copy kernel bzImage ke /boot
+          sudo cp files/bzImage mnt/root/boot/bzImage
+          
+          # 8. Umount
+          sudo umount mnt/root
+          sudo losetup -d $LOOP
 
-    - name: Cache Buildroot Downloads and ccache
-      uses: actions/cache@v4
-      with:
-        path: |
-          buildroot/dl
-          ~/.buildroot-ccache
-        key: ${{ runner.os }}-buildroot-pc-x86_64-${{ hashFiles('buildroot/.config') }}
-        restore-keys: |
-          ${{ runner.os }}-buildroot-pc-x86_64-
-
-    - name: Configure Buildroot for PC x86_64 with GUI and ccache
-      run: |
-        cd buildroot
-        # PERBAIKAN 1: Menggunakan target PC generik untuk membuat Bootable Disk Image
-        make pc_x86_64_defconfig
-        
-        # Config dasar buat bootable disk
-        echo "BR2_TARGET_ROOTFS_TAR=y" >> .config
-        echo "BR2_TARGET_ROOTFS_EXT2=y" >> .config
-        echo "BR2_TARGET_ROOTFS_EXT2_SIZE=\"512M\"" >> .config
-        echo "BR2_TARGET_GRUB2=y" >> .config
-        echo "BR2_TARGET_GRUB2_BOOT_PARTITION=y" >> .config
-    
-        # PERBAIKAN 2: Mengaktifkan seluruh paket dependensi wajib untuk GUI & Openbox
-        echo "BR2_PACKAGE_LIBGLIB2=y" >> .config
-        echo "BR2_PACKAGE_FONTCONFIG=y" >> .config
-        echo "BR2_PACKAGE_XLIB_LIBX11=y" >> .config
-        echo "BR2_PACKAGE_LIBPNG=y" >> .config
-        echo "BR2_PACKAGE_PIXMAN=y" >> .config
-        echo "BR2_PACKAGE_LIBXKBCOMMON=y" >> .config
-        echo "BR2_PACKAGE_PANGO=y" >> .config
-
-        # Config GUI
-        echo "BR2_PACKAGE_XORG7=y" >> .config
-        echo "BR2_PACKAGE_XSERVER_XORG_SERVER=y" >> .config
-        echo "BR2_PACKAGE_XSERVER_XORG_SERVER_MODULAR=y" >> .config
-        echo "BR2_PACKAGE_XDRIVER_XF86_VIDEO_VESA=y" >> .config
-        echo "BR2_PACKAGE_XDRIVER_XF86_INPUT_LIBINPUT=y" >> .config
-        echo "BR2_PACKAGE_OPENBOX=y" >> .config
-        echo "BR2_PACKAGE_XTERM=y" >> .config
-       
-        # AKTIFKAN CCACHE DI BUILDROOT
-        echo "BR2_CCACHE=y" >> .config
-        echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
-        echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
-        
-        make olddefconfig
-
-    - name: Build System
-      run: |
-        cd buildroot
-        make
-    
-    - name: Upload Bootable Disk Image Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Linux-PC-x86_64-GUI-Bootable
-        # PERBAIKAN 3: Jalur berkas gambar disk tunggal hasil racikan target pc_x86_64
-        path: buildroot/output/images/sdcard.img
-        retention-days: 14
-        if-no-files-found: error
+      - name: Upload Bootable Disk Image
+        uses: actions/upload-artifact@v4
+        with:
+          name: x86-remastered-bootable
+          path: disk.img
+          retention-days: 14
