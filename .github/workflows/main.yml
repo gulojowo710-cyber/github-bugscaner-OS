@@ -7,10 +7,10 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - name: Download Artifacts
-       uses: actions/Download-artifact@v4
-       with:
-        name: x86-minimal-linux
-        path: |
+        uses: actions/Download-artifact@v4
+        with:
+         name: x86-minimal-linux
+         path: |
           buildroot/output/images/bzImage
           buildroot/output/images/rootfs.
           
