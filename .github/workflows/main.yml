@@ -40,8 +40,15 @@ jobs:
       run: |
         cd buildroot
         make qemu_x86_defconfig
-        
-        # Konfigurasi GUI sebelumnya
+    
+        # Config dasar buat bootable disk
+        echo "BR2_TARGET_ROOTFS_TAR=y" >> .config
+        echo "BR2_TARGET_ROOTFS_EXT2=y" >> .config
+        echo "BR2_TARGET_ROOTFS_EXT2_SIZE=\"512M\"" >> .config
+        echo "BR2_TARGET_GRUB2=y" >> .config
+        echo "BR2_TARGET_GRUB2_BOOT_PARTITION=y" >> .config
+    
+        # Config GUI dari screenshot kamu
         echo "BR2_PACKAGE_XORG7=y" >> .config
         echo "BR2_PACKAGE_XSERVER_XORG_SERVER=y" >> .config
         echo "BR2_PACKAGE_XSERVER_XORG_SERVER_MODULAR=y" >> .config
@@ -49,7 +56,7 @@ jobs:
         echo "BR2_PACKAGE_XDRIVER_XF86_INPUT_LIBINPUT=y" >> .config
         echo "BR2_PACKAGE_OPENBOX=y" >> .config
         echo "BR2_PACKAGE_XTERM=y" >> .config
-        
+       
         # AKTIFKAN CCACHE DI BUILDROOT
         echo "BR2_CCACHE=y" >> .config
         echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
@@ -61,15 +68,11 @@ jobs:
       run: |
         cd buildroot
         make
-
-    - name: Upload Kernel Image
-      uses: actions/artifacts@v4
+    
+    - name: Upload Disk Image Artifact
+      uses: actions/upload-artifact@v4
       with:
-        name: linux-kernel-x86-gui-cached
-        path: buildroot/output/images/bzImage
-
-    - name: Upload Root Filesystem
-      uses: actions/artifacts@v4
-      with:
-        name: rootfs-x86-gui-cached
-        path: buildroot/output/images/rootfs.tar
+        name: disk-img-x86-gui-cached
+        path: buildroot/output/images/disk.img
+        retention-days: 14
+        if-no-files-found: error
