@@ -1,66 +1,107 @@
-name: Remaster Disk Image
+name: Build Minimal x86 Linux OS
 
-on: workflow_dispatch
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  remaster:
-    runs-on: ubuntu-22.04
+  build:
+    runs-on: ubuntu-latest
     steps:
-      - name: Download Artifacts
-        uses: actions/Download-artifact@v4
-        with:
-         name: x86-minimal-linux
-         path: |
-          buildroot/output/images/bzImage
-          buildroot/output/images/rootfs.
-          
-      - name: Install deps for making bootable disk
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y grub-pc-bin mtools dosfstools parted qemu-utils
+     - name: Checkout Repository
+       uses: actions/checkout@v4
 
-      - name: Create bootable disk.img
-        run: |
-          mkdir -p mnt/boot mnt/root
-          
-          # 1. Bikin file disk.img kosong 512MB
-          dd if=/dev/zero of=disk.img bs=1M count=512
-          
-          # 2. Bikin tabel partisi MBR + 1 partisi bootable
-          parted -s disk.img mklabel msdos
-          parted -s disk.img mkpart primary ext2 1MiB 100%
-          parted -s disk.img set 1 boot on
-          
-          # 3. Mount disk.img pake loop
-          LOOP=$(sudo losetup -fP --show disk.img)
-          sudo mkfs.ext2 ${LOOP}p1 -L root
-          
-          # 4. Copy rootfs.ext2 ke partisi
-          sudo mount ${LOOP}p1 mnt/root
-          sudo tar -xf files/rootfs.ext2 -C mnt/root
-          
-          # 5. Install GRUB ke disk.img
-          sudo grub-install --target=i386-pc --boot-directory=mnt/root/boot --modules="biosdisk part_msdos ext2" $LOOP
-          
-          # 6. Bikin grub.cfg
-          sudo mkdir -p mnt/root/boot/grub
-          cat <<EOF | sudo tee mnt/root/boot/grub/grub.cfg
-          set timeout=0
-          menuentry "Buildroot" {
-              linux /boot/bzImage root=/dev/sda1 console=ttyS0
-          }
-          EOF
-          
-          # 7. Copy kernel bzImage ke /boot
-          sudo cp files/bzImage mnt/root/boot/bzImage
-          
-          # 8. Umount
-          sudo umount mnt/root
-          sudo losetup -d $LOOP
+     - name: Install Buildroot Dependencies
+       run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          build-essential \
+          libncurses-dev \
+          bison \
+          flex \
+          bc \
+          rsync \
+          unzip \
+          wget \
+          cpio
+     - name: Clone Buildroot
+       run: |
+        git clone --depth 1 --branch 2024.02.x https://github.com/buildroot/buildroot.git
+     - name: Configure Buildroot for x86 with GUI and ccache
+       run: |
+        cd buildroot
+        make qemu_x86_64_defconfig
+        
+        # Config dasar buat bootable disk
+        echo "BR2_TARGET_ROOTFS_TAR=y" >> .config
+        echo "BR2_TARGET_ROOTFS_EXT2=y" >> .config
+        echo "BR2_TARGET_ROOTFS_EXT2_SIZE=\"512M\"" >> .config
+        echo "BR2_TARGET_GRUB2=y" >> .config
+        echo "BR2_TARGET_GRUB2_BOOT_PARTITION=y" >> .config
+    
+        # SOLUSI: Mengaktifkan libglib2 dan dependensi wajib GUI
+        echo "BR2_PACKAGE_LIBGLIB2=y" >> .config
+        echo "BR2_PACKAGE_FONTCONFIG=y" >> .config
+        echo "BR2_PACKAGE_XLIB_LIBX11=y" >> .config
 
-      - name: Upload Bootable Disk Image
-        uses: actions/upload-artifact@v4
-        with:
-          name: x86-remastered-bootable
-          path: disk.img
-          retention-days: 14
+        # Config GUI asal
+        echo "BR2_PACKAGE_XORG7=y" >> .config
+        echo "BR2_PACKAGE_XSERVER_XORG_SERVER=y" >> .config
+        echo "BR2_PACKAGE_XSERVER_XORG_SERVER_MODULAR=y" >> .config
+        echo "BR2_PACKAGE_XDRIVER_XF86_VIDEO_VESA=y" >> .config
+        echo "BR2_PACKAGE_XDRIVER_XF86_INPUT_LIBINPUT=y" >> .config
+        echo "BR2_PACKAGE_OPENBOX=y" >> .config
+        echo "BR2_PACKAGE_XTERM=y" >> .config
+       
+        # AKTIFKAN CCACHE DI BUILDROOT
+        echo "BR2_CCACHE=y" >> .config
+        echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
+        echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
+        
+        make olddefconfig
+
+       
+        # AKTIFKAN CCACHE DI BUILDROOT
+        echo "BR2_CCACHE=y" >> .config
+        echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
+        echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
+        
+     - name: Build Operating System
+       run: |
+        cd buildroot
+        # Use available CPU cores for faster compilation
+        make -j$(nproc)
+         # Masukkan langkah ini TEPAT SETELAH langkah "Build System" selesai
+     - name: Create Bootable Disk Image using Genimage
+       run: |
+        # 1. Instal utilitas genimage di runner GitHub Actions
+        sudo apt-get install -y genimage
+
+        # 2. Buat konfigurasi partisi disk untuk GRUB dan Rootfs
+        cat << 'EOF' > genimage.cfg
+        image disk.img {
+            hdimage {
+            }
+            partition boot {
+                in-partition-table = "no"
+                image = "buildroot/output/images/bzImage"
+                offset = 0
+            }
+            partition rootfs {
+                partition-type = 0x83
+                image = "buildroot/output/images/rootfs.ext2"
+            }
+        }
+        EOF
+
+        # 3. Jalankan genimage untuk menyatukan kedua berkas tersebut
+        genimage --config genimage.cfg --outputpath .
+
+        # Perbarui langkah unggah artifact Anda agar mengambil berkas disk.img yang baru dibuat
+     - name: Upload Combined Disk Image
+       uses: actions/upload-artifact@v4
+       with:
+        name: Linux-X86-Bootable-Disk
+        path: disk.img
+        retention-days: 14
