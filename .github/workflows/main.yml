@@ -25,13 +25,18 @@ jobs:
 
     - name: Download Sources (Kernel & BusyBox)
       run: |
+        mkdir -p workspace
         cd workspace
-        # Download Stable Linux Kernel (Contoh: v6.1)
-        curl -L https://kernel.org | tar -xJ
+        # Download Stable Linux Kernel menggunakan direct link yang valid
+        curl -L https://kernel.org -o linux-6.1.50.tar.xz
+        tar -xJf linux-6.1.50.tar.xz
         mv linux-6.1.50 linux-src
-        # Download BusyBox
-        curl -L https://busybox.net | tar -xj
+        
+        # Download BusyBox menggunakan direct link yang valid
+        curl -L https://busybox.net -o busybox-1.36.1.tar.bz2
+        tar -xjf busybox-1.36.1.tar.bz2
         mv busybox-1.36.1 busybox-src
+
 
     - name: Compile Linux Kernel
       run: |
