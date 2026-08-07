@@ -79,7 +79,7 @@ jobs:
         file buildroot/output/images/*
 
      - name: Upload semua .img dan .squashfs
-      uses: actions/upload-artifact@v4
+       uses: actions/upload-artifact@v4
       if: always()  
     with:
        name: buildroot-output
