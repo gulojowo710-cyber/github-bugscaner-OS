@@ -55,36 +55,66 @@ jobs:
         sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
         make -j$(nproc)
         make CONFIG_PREFIX=../rootfs install
-
     - name: Create Init Script & Build Initramfs
       run: |
         cd workspace
-        # Buat script init
+        
+        # Memastikan symlink sh mengarah ke toybox jika belum ada
+        if [ ! -f rootfs/bin/sh ] && [ -f rootfs/bin/toybox ]; then
+          ln -s toybox rootfs/bin/sh
+        fi
+
+        # Membuat node device esensial di rootfs sebelum dikemas
+        mkdir -p rootfs/dev
+        sudo mknod -m 600 rootfs/dev/console c 5 1
+        sudo mknod -m 666 rootfs/dev/null c 1 3
+        
+        # Buat script init yang lebih aman
         cat << 'EOF' > rootfs/init
         #!/bin/sh
+        
+        # Mount filesystem dasar
         mount -t proc none /proc
         mount -t sysfs none /sys
         mount -t devtmpfs none /dev
+        
         echo "========================================"
         echo " Selamat datang di OS Linux Minimal Anda! "
         echo "========================================"
+        
+        # Jalankan shell secara interaktif agar tidak langsung exit
         exec /bin/sh
         EOF
+        
+        # Pastikan permission executable terpasang
         chmod +x rootfs/init
         
-        # Packing menjadi initramfs.cpio.gz
+        # Packing menjadi initramfs.cpio.gz dengan benar
         cd rootfs
         find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../iso/boot/initramfs.cpio.gz
 
-    - name: Configure Bootloader (Isolinux)
-      run: |
-        cd workspace/iso/boot/isolinux
-        # Salin file bootloader dari sistem Ubuntu Runner
-        cp /usr/lib/ISOLINUX/isolinux.bin .
-        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 .
-        
+    
+    
         # Buat konfigurasi isolinux
         cat << 'EOF' > isolinux.cfg
+        default minimal
+        label minimal
+          kernel /boot/vmlinuz
+          append initrd=/boot/initramfs.cpio.gz console=ttyS0 console=tty0
+        EOF
+    
+    - name: Configure Bootloader (Isolinux)
+      run: |
+        cd workspace
+        # Buat folder jika belum ada
+        mkdir -p iso/boot/isolinux
+        
+        # Salin file bootloader dari sistem Ubuntu Runner ke folder yang benar
+        cp /usr/lib/ISOLINUX/isolinux.bin iso/boot/isolinux/
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 iso/boot/isolinux/
+        
+        # Buat konfigurasi isolinux di folder yang tepat
+        cat << 'EOF' > iso/boot/isolinux/isolinux.cfg
         default minimal
         label minimal
           kernel /boot/vmlinuz
