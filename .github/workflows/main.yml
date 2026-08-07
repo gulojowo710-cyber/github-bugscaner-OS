@@ -1,91 +1,102 @@
-name: Build Minimal x86 Linux OS
+name: Build Minimal Linux x86
 
 on:
   push:
-    branches: [ main ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  build:
+  build-os:
     runs-on: ubuntu-latest
+
     steps:
-     - name: Checkout Repository
-       uses: actions/checkout@v4
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-     - name: Install Buildroot Dependencies
-       run: |
+    - name: Install Build Dependencies
+      run: |
         sudo apt-get update
-        sudo apt-get install -y \
-          build-essential \
-          libncurses-dev \
-          bison \
-          flex \
-          bc \
-          rsync \
-          unzip \
-          wget \
-          cpio
-     - name: Clone Buildroot
-       run: |
-        git clone --depth 1 --branch 2024.02.x https://github.com/buildroot/buildroot.git
-     - name: Configure Buildroot for x86 with GUI and ccache
-       run: |
-        cd buildroot
-        make qemu_x86_64_defconfig
-        
-        # Config dasar buat bootable disk
-        echo "BR2_TARGET_ROOTFS_TAR=y" >> .config
-        echo "BR2_TARGET_ROOTFS_EXT2=y" >> .config
-        echo "BR2_TARGET_ROOTFS_EXT2_SIZE=\"512M\"" >> .config
-        echo "BR2_TARGET_GRUB2=y" >> .config
-        echo "BR2_TARGET_GRUB2_BOOT_PARTITION=y" >> .config
-        echo "BR2_ROOTFS_POST_IMAGE_SCRIPT=\"board/qemu/x86_64/post-image.sh\"" >> .config
-      
-        # SOLUSI: Mengaktifkan libglib2 dan dependensi wajib GUI
-        echo "BR2_PACKAGE_LIBGLIB2=y" >> .config
-        echo "BR2_PACKAGE_FONTCONFIG=y" >> .config
-        echo "BR2_PACKAGE_XLIB_LIBX11=y" >> .config
+        sudo apt-get install -y bc bison flex libelf-dev libssl-dev libncurses-dev cpio xorriso syslinux syslinux-utils isolinux
 
-        # Config GUI asal
-        echo "BR2_PACKAGE_XORG7=y" >> .config
-        echo "BR2_PACKAGE_XSERVER_XORG_SERVER=y" >> .config
-        echo "BR2_PACKAGE_XSERVER_XORG_SERVER_MODULAR=y" >> .config
-        echo "BR2_PACKAGE_XDRIVER_XF86_VIDEO_VESA=y" >> .config
-        echo "BR2_PACKAGE_XDRIVER_XF86_INPUT_LIBINPUT=y" >> .config
-        echo "BR2_PACKAGE_OPENBOX=y" >> .config
-        echo "BR2_PACKAGE_XTERM=y" >> .config
-       
-        # AKTIFKAN CCACHE DI BUILDROOT
-        echo "BR2_CCACHE=y" >> .config
-        echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
-        echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
-        
-        make olddefconfig
+    - name: Set up Workspace Directories
+      run: |
+        mkdir -p workspace/rootfs/{bin,sbin,etc,proc,sys,dev,usr/bin,usr/sbin}
+        mkdir -p workspace/iso/boot/isolinux
 
-       
-        # AKTIFKAN CCACHE DI BUILDROOT
-        echo "BR2_CCACHE=y" >> .config
-        echo "BR2_CCACHE_DIR=\"\$(HOME)/.buildroot-ccache\"" >> .config
-        echo "BR2_CCACHE_INITIAL_SETUP=\"\"" >> .config
-        
-     - name: Build
-       run: |
-        cd buildroot
+    - name: Download Sources (Kernel & BusyBox)
+      run: |
+        cd workspace
+        # Download Stable Linux Kernel (Contoh: v6.1)
+        curl -L https://kernel.org | tar -xJ
+        mv linux-6.1.50 linux-src
+        # Download BusyBox
+        curl -L https://busybox.net | tar -xj
+        mv busybox-1.36.1 busybox-src
+
+    - name: Compile Linux Kernel
+      run: |
+        cd workspace/linux-src
+        make x86_64_defconfig
+        # Optimasi ukuran (opsional, bisa diganti tinyconfig)
+        scripts/config --disable DEBUG_INFO
+        make -j$(nproc) bzImage
+        cp arch/x86/boot/bzImage ../iso/boot/vmlinuz
+
+    - name: Compile BusyBox (Static Binary)
+      run: |
+        cd workspace/busybox-src
+        make defconfig
+        # Paksa busybox dicompile secara statis tanpa shared library
+        sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
         make -j$(nproc)
+        make CONFIG_PREFIX=../rootfs install
 
-     - name: List semua hasil
-       run: |
-        ls -lh buildroot/output/images/
-        file buildroot/output/images/*
+    - name: Create Init Script & Build Initramfs
+      run: |
+        cd workspace
+        # Buat script init
+        cat << 'EOF' > rootfs/init
+        #!/bin/sh
+        mount -t proc none /proc
+        mount -t sysfs none /sys
+        mount -t devtmpfs none /dev
+        echo "========================================"
+        echo " Selamat datang di OS Linux Minimal Anda! "
+        echo "========================================"
+        exec /bin/sh
+        EOF
+        chmod +x rootfs/init
+        
+        # Packing menjadi initramfs.cpio.gz
+        cd rootfs
+        find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../iso/boot/initramfs.cpio.gz
 
-     - name: Upload semua .img dan .squashfs
-       uses: actions/upload-artifact@v4
-       if: always()  
-       with:
-        name: buildroot-output
-        path: |
-         buildroot/output/images/disk.img
-         buildroot/output/images/rootfs.squashfs
-         buildroot/output/images/bzImage
-        retention-days: 30
-        if-no-files-found: error  # biar langsung keliatan error kalau ga ada file
+    - name: Configure Bootloader (Isolinux)
+      run: |
+        cd workspace/iso/boot/isolinux
+        # Salin file bootloader dari sistem Ubuntu Runner
+        cp /usr/lib/ISOLINUX/isolinux.bin .
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 .
+        
+        # Buat konfigurasi isolinux
+        cat << 'EOF' > isolinux.cfg
+        default minimal
+        label minimal
+          kernel /boot/vmlinuz
+          append initrd=/boot/initramfs.cpio.gz console=ttyS0 console=tty0
+        EOF
+
+    - name: Create ISO Image
+      run: |
+        cd workspace
+        xorriso -as mkisofs -o minimal_linux.iso \
+          -b boot/isolinux/isolinux.bin \
+          -c boot/isolinux/boot.cat \
+          -no-emul-boot -boot-load-size 4 -boot-info-table \
+          iso
+
+    - name: Upload ISO Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: minimal-linux-iso
+        path: workspace/minimal_linux.iso
