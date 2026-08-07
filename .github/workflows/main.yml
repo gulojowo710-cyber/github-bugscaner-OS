@@ -12,15 +12,19 @@ jobs:
      - name: Checkout Repository
        uses: actions/checkout@v4
 
-     - name: Install dependencies
+     - name: Install Buildroot Dependencies
        run: |
         sudo apt-get update
-        sudo apt-get install -y build-essential git wget cpio unzip rsync bc file \
-        libncurses-dev libssl-dev libelf-dev python3 \
-        ccache sed make binutils gcc g++ bash patch gzip bzip2 perl \
-        tar xz-utils diffutils findutils util-linux \
-        libtool automake autoconf pkg-config \
-        mtools dosfstools genisoimage
+        sudo apt-get install -y \
+          build-essential \
+          libncurses-dev \
+          bison \
+          flex \
+          bc \
+          rsync \
+          unzip \
+          wget \
+          cpio
      - name: Clone Buildroot
        run: |
         git clone --depth 1 --branch 2024.02.x https://github.com/buildroot/buildroot.git
@@ -40,7 +44,6 @@ jobs:
         echo "BR2_PACKAGE_LIBGLIB2=y" >> .config
         echo "BR2_PACKAGE_FONTCONFIG=y" >> .config
         echo "BR2_PACKAGE_XLIB_LIBX11=y" >> .config
-        echo "BR2_PACKAGE_OPKG=y" >> .config
 
         # Config GUI asal
         echo "BR2_PACKAGE_XORG7=y" >> .config
@@ -68,37 +71,10 @@ jobs:
        run: |
         cd buildroot
         # Use available CPU cores for faster compilation
-        make 
-         # Masukkan langkah ini TEPAT SETELAH langkah "Build System" selesai
-     - name: Create Bootable Disk Image using Genimage
-       run: |
-        # 1. Instal utilitas genimage di runner GitHub Actions
-        sudo apt-get install -y genimage
-
-        # 2. Buat konfigurasi partisi disk untuk GRUB dan Rootfs
-        cat << 'EOF' > genimage.cfg
-        image disk.img {
-            hdimage {
-            }
-            partition boot {
-                in-partition-table = "no"
-                image = "buildroot/output/images/bzImage"
-                offset = 0
-            }
-            partition rootfs {
-                partition-type = 0x83
-                image = "buildroot/output/images/rootfs.ext2"
-            }
-        }
-        EOF
-
-        # 3. Jalankan genimage untuk menyatukan kedua berkas tersebut
-        genimage --config genimage.cfg --outputpath .
-
-        # Perbarui langkah unggah artifact Anda agar mengambil berkas disk.img yang baru dibuat
-     - name: Upload Combined Disk Image
+        make -j$(nproc)
+     - name: Upload OS Artifacts
        uses: actions/upload-artifact@v4
        with:
-        name: Linux-X86-Bootable-Disk
-        path: disk.img
-        retention-days: 14
+        name: x86-minimal-linux
+        path: |
+          buildroot/output/images/disk.img
