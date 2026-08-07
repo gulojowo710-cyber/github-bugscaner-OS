@@ -10,118 +10,83 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
 
     - name: Install Build Dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc bison flex libelf-dev libssl-dev libncurses-dev cpio xorriso syslinux syslinux-utils isolinux
+        sudo apt-get install -y bc bison flex libelf-dev libssl-dev libncurses-dev cpio xorriso syslinux
 
-    - name: Set up Workspace Directories
-      run: |
-        mkdir -p workspace/rootfs/{bin,sbin,etc,proc,sys,dev,usr/bin,usr/sbin}
-        mkdir -p workspace/iso/boot/isolinux
-
-    - name: Download Sources (Kernel & ToyBox)
+    - name: Set up Workspace
       run: |
         mkdir -p workspace
         cd workspace
-        # Download Stable Linux Kernel menggunakan direct link yang valid
         wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.6.tar.xz
         tar -xf linux-6.12.6.tar.xz
         mv linux-6.12.6 linux-src
-        
-        # Download BusyBox menggunakan direct link yang valid
         wget https://landley.net/toybox/downloads/toybox-0.8.11.tar.gz
         tar -xf toybox-0.8.11.tar.gz
         mv toybox-0.8.11 toybox-src
 
-
-    - name: Compile Linux Kernel
+    - name: Compile Kernel
       run: |
         cd workspace/linux-src
         make x86_64_defconfig
-        # Optimasi ukuran (opsional, bisa diganti tinyconfig)
         scripts/config --disable DEBUG_INFO
         make -j$(nproc) bzImage
+        mkdir -p ../iso/boot
         cp arch/x86/boot/bzImage ../iso/boot/vmlinuz
 
-    - name: Compile toyBox (Static Binary)
-      run: |
-        cd workspace/toybox-src
-        make defconfig
-        # Paksa toybox dicompile secara statis tanpa shared library
-        sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
-        make -j$(nproc)
-        make CONFIG_PREFIX=../rootfs install
-    - name: Create Init Script & Build Initramfs
+    - name: Compile Toybox + Build Rootfs
       run: |
         cd workspace
+        mkdir -p rootfs/{bin,sbin,etc,proc,sys,dev,usr/bin,usr/sbin}
         
-        # Memastikan symlink sh mengarah ke toybox jika belum ada
-        if [ ! -f rootfs/bin/sh ] && [ -f rootfs/bin/toybox ]; then
-          ln -s toybox rootfs/bin/sh
-        fi
+        cd toybox-src
+        make defconfig
+        echo "CONFIG_STATIC=y" >> .config
+        make -j$(nproc)
+        make install CONFIG_PREFIX=../rootfs
 
-        # Membuat node device esensial di rootfs sebelum dikemas
-        mkdir -p rootfs/dev
-        sudo mknod -m 600 rootfs/dev/console c 5 1
-        sudo mknod -m 666 rootfs/dev/null c 1 3
-        
-        # Buat script init yang lebih aman
-        cat << 'EOF' > rootfs/init
+        cd ../rootfs
+        # PENTING: bikin symlink sh dan device node
+        ln -sf toybox bin/sh
+        ln -sf toybox bin/ls
+        ln -sf toybox bin/mount
+        sudo mknod -m 622 dev/console c 5 1
+        sudo mknod -m 666 dev/null c 1 3
+        sudo mknod -m 666 dev/tty c 5 0
+
+    - name: Create Init Script
+      run: |
+        cat << 'EOF' > workspace/rootfs/init
         #!/bin/sh
-        
-        # Mount filesystem dasar
-        mount -t proc none /proc
-        mount -t sysfs none /sys
-        mount -t devtmpfs none /dev
-        
-        echo "========================================"
-        echo " Selamat datang di OS Linux Minimal Anda! "
-        echo "========================================"
-        
-        # Jalankan shell secara interaktif agar tidak langsung exit
+        mount -t proc proc /proc
+        mount -t sysfs sys /sys
+        mount -t devtmpfs dev /dev
+        echo "Booting Minimal Linux..."
         exec /bin/sh
         EOF
-        
-        # Pastikan permission executable terpasang
-        chmod +x rootfs/init
-        
-        # Packing menjadi initramfs.cpio.gz dengan benar
-        cd rootfs
-        find . -print0 | cpio --null -ov --format=newc | gzip -9 > ../iso/boot/initramfs.cpio.gz
+        chmod +x workspace/rootfs/init
 
-    
-    
-        # Buat konfigurasi isolinux
-        cat << 'EOF' > isolinux.cfg
-        default minimal
-        label minimal
-          kernel /boot/vmlinuz
-          append initrd=/boot/initramfs.cpio.gz console=ttyS0 console=tty0
-        EOF
-    
-    - name: Configure Bootloader (Isolinux)
+    - name: Create Initramfs
       run: |
-        cd workspace
-        # Buat folder jika belum ada
-        mkdir -p iso/boot/isolinux
-        
-        # Salin file bootloader dari sistem Ubuntu Runner ke folder yang benar
-        cp /usr/lib/ISOLINUX/isolinux.bin iso/boot/isolinux/
-        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 iso/boot/isolinux/
-        
-        # Buat konfigurasi isolinux di folder yang tepat
-        cat << 'EOF' > iso/boot/isolinux/isolinux.cfg
+        cd workspace/rootfs
+        find . | cpio -H newc -o | gzip > ../iso/boot/initramfs.cpio.gz
+
+    - name: Configure Isolinux
+      run: |
+        mkdir -p workspace/iso/boot/isolinux
+        cp /usr/lib/ISOLINUX/isolinux.bin workspace/iso/boot/isolinux/
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 workspace/iso/boot/isolinux/
+        cat << 'EOF' > workspace/iso/boot/isolinux/isolinux.cfg
         default minimal
         label minimal
           kernel /boot/vmlinuz
-          append initrd=/boot/initramfs.cpio.gz console=ttyS0 console=tty0
+          append initrd=/boot/initramfs.cpio.gz root=/dev/ram0 console=ttyS0
         EOF
 
-    - name: Create ISO Image
+    - name: Create ISO
       run: |
         cd workspace
         xorriso -as mkisofs -o minimal_linux.iso \
@@ -130,7 +95,7 @@ jobs:
           -no-emul-boot -boot-load-size 4 -boot-info-table \
           iso
 
-    - name: Upload ISO Artifact
+    - name: Upload ISO
       uses: actions/upload-artifact@v4
       with:
         name: minimal-linux-iso
