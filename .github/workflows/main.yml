@@ -23,7 +23,7 @@ jobs:
         mkdir -p workspace/rootfs/{bin,sbin,etc,proc,sys,dev,usr/bin,usr/sbin}
         mkdir -p workspace/iso/boot/isolinux
 
-    - name: Download Sources (Kernel & BusyBox)
+    - name: Download Sources (Kernel & ToyBox)
       run: |
         mkdir -p workspace
         cd workspace
@@ -49,9 +49,9 @@ jobs:
 
     - name: Compile toyBox (Static Binary)
       run: |
-        cd workspace/busybox-src
+        cd workspace/toybox-src
         make defconfig
-        # Paksa busybox dicompile secara statis tanpa shared library
+        # Paksa toybox dicompile secara statis tanpa shared library
         sed -i 's/# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
         make -j$(nproc)
         make CONFIG_PREFIX=../rootfs install
