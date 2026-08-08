@@ -74,25 +74,23 @@ jobs:
         cd workspace/rootfs
         find . | cpio -H newc -o | gzip > ../iso/boot/initramfs.cpio.gz
 
-    - name: Configure Isolinux
+    - name: Configure Syslinux
       run: |
         cd workspace
-        # Buat folder jika belum ada
-        mkdir -p iso/boot/isolinux
+        # Buat folder konfigurasi bootloader di root ISO atau di bawah /boot/syslinux
+        mkdir -p iso/boot/syslinux
   
-        # Salin file bootloader dari sistem Ubuntu Runner ke folder yang benar
-        cp /usr/lib/ISOLINUX/isolinux.bin iso/boot/isolinux/
-        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 iso/boot/isolinux/
+        # Salin file bootloader Syslinux dari sistem Ubuntu Runner ke folder yang benar
+        cp /usr/lib/ISOLINUX/isolinux.bin iso/boot/syslinux/
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 iso/boot/syslinux/
   
-        # Buat konfigurasi isolinux di folder yang tepat
-        cat << 'EOF' > iso/boot/isolinux/isolinux.cfg
-        default minimal
-        label minimal
-        kernel /boot/vmlinuz
-        append initrd=/boot/initramfs.cpio.gz console=ttyS0 console=tty0
+        # Buat konfigurasi syslinux di folder yang sama dengan isolinux.bin
+        cat << 'EOF' > iso/boot/syslinux/syslinux.cfg
+        DEFAULT minimal
+        LABEL minimal
+          KERNEL /boot/vmlinuz
+          APPEND initrd=/boot/initramfs.cpio.gz console=ttyS0 console=tty0
         EOF
-        shell: /usr/bin/bash -e {0}
-
 
     - name: Create ISO
       run: |
