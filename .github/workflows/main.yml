@@ -35,7 +35,7 @@ jobs:
       run: |
         cd workspace
         mkdir -p rootfs/{bin,sbin,etc,proc,sys,dev,usr/bin,usr/sbin,usr/lib,home/user}
-        
+    
         # 1. Toybox static
         cd toybox-src
         make defconfig
@@ -45,11 +45,18 @@ jobs:
         cd ../rootfs
         ln -sf toybox bin/sh
 
-        # 2. Install Xorg + FLWM dari static build musl
-        # Biar kecil kita pake binary statis dari Void Linux
-        wget https://repo.voidlinux.org/static/xorg-server-21.1.11_1.x86_64-musl-static.xbps
-        wget https://repo.voidlinux.org/static/flwm-1.16_2.x86_64-musl-static.xbps
-        wget https://repo.voidlinux.org/static/xterm-380_1.x86_64-musl-static.xbps
+        # 2. Download Xorg + FLWM + xterm dari Alpine 3.18
+        wget https://dl-cdn.alpinelinux.org/alpine/v3.18/main/x86_64/xorg-server-21.1.8-r0.apk
+        wget https://dl-cdn.alpinelinux.org/alpine/v3.18/community/x86_64/flwm-1.16-r0.apk
+        wget https://dl-cdn.alpinelinux.org/alpine/v3.18/main/x86_64/xterm-381-r0.apk
+    
+        # extract .apk = tar.gz
+        for f in *.apk; do tar -xzf $f -C .; done
+
+        # 3. Device nodes
+        sudo mknod -m 622 dev/console c 5 1
+        sudo mknod -m 666 dev/null c 1 3
+        sudo mknod -m 666 dev/tty c 5 0
         
         # extract manual
         for f in *.xbps; do tar xf $f -C .; done
