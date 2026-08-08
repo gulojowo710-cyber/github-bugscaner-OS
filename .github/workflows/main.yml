@@ -76,15 +76,23 @@ jobs:
 
     - name: Configure Isolinux
       run: |
-        mkdir -p workspace/iso/boot/isolinux
-        cp /usr/lib/ISOLINUX/isolinux.bin workspace/iso/boot/isolinux/
-        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 workspace/iso/boot/isolinux/
-        cat << 'EOF' > workspace/iso/boot/isolinux/isolinux.cfg
+        cd workspace
+        # Buat folder jika belum ada
+        mkdir -p iso/boot/isolinux
+  
+        # Salin file bootloader dari sistem Ubuntu Runner ke folder yang benar
+        cp /usr/lib/ISOLINUX/isolinux.bin iso/boot/isolinux/
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 iso/boot/isolinux/
+  
+        # Buat konfigurasi isolinux di folder yang tepat
+        cat << 'EOF' > iso/boot/isolinux/isolinux.cfg
         default minimal
         label minimal
-          kernel /boot/vmlinuz
-          append initrd=/boot/initramfs.cpio.gz root=/dev/ram0 console=ttyS0
+        kernel /boot/vmlinuz
+        append initrd=/boot/initramfs.cpio.gz console=ttyS0 console=tty0
         EOF
+        shell: /usr/bin/bash -e {0}
+
 
     - name: Create ISO
       run: |
