@@ -1,32 +1,26 @@
-name: Build Minimal Linux x86
+name: Build Minimal Linux GUI x86
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
-  build-os:
+  build:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install Build Dependencies
+    - name: Install Deps
       run: |
         sudo apt-get update
-        sudo apt-get install -y bc bison flex libelf-dev libssl-dev libncurses-dev cpio xorriso syslinux
+        sudo apt-get install -y bc bison flex libelf-dev libssl-dev libncurses-dev cpio xorriso syslinux wget
 
-    - name: Set up Workspace
+    - name: Download Kernel + Toybox
       run: |
-        mkdir -p workspace
-        cd workspace
+        mkdir workspace && cd workspace
         wget https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.12.6.tar.xz
-        tar -xf linux-6.12.6.tar.xz
-        mv linux-6.12.6 linux-src
+        tar xf linux-6.12.6.tar.xz && mv linux-6.12.6 linux-src
         wget https://landley.net/toybox/downloads/toybox-0.8.11.tar.gz
-        tar -xf toybox-0.8.11.tar.gz
-        mv toybox-0.8.11 toybox-src
+        tar xf toybox-0.8.11.tar.gz && mv toybox-0.8.11 toybox-src
 
     - name: Compile Kernel
       run: |
@@ -37,72 +31,75 @@ jobs:
         mkdir -p ../iso/boot
         cp arch/x86/boot/bzImage ../iso/boot/vmlinuz
 
-    - name: Compile Toybox + Build Rootfs
+    - name: Build Rootfs + GUI
       run: |
         cd workspace
-        mkdir -p rootfs/{bin,sbin,etc,proc,sys,dev,usr/bin,usr/sbin}
+        mkdir -p rootfs/{bin,sbin,etc,proc,sys,dev,usr/bin,usr/sbin,usr/lib,home/user}
         
+        # 1. Toybox static
         cd toybox-src
         make defconfig
         echo "CONFIG_STATIC=y" >> .config
         make -j$(nproc)
         make install CONFIG_PREFIX=../rootfs
-
         cd ../rootfs
-        # PENTING: bikin symlink sh dan device node
         ln -sf toybox bin/sh
-        ln -sf toybox bin/ls
-        ln -sf toybox bin/mount
+
+        # 2. Install Xorg + FLWM dari static build musl
+        # Biar kecil kita pake binary statis dari Void Linux
+        wget https://repo.voidlinux.org/static/xorg-server-21.1.11_1.x86_64-musl-static.xbps
+        wget https://repo.voidlinux.org/static/flwm-1.16_2.x86_64-musl-static.xbps
+        wget https://repo.voidlinux.org/static/xterm-380_1.x86_64-musl-static.xbps
+        
+        # extract manual
+        for f in *.xbps; do tar xf $f -C .; done
+
+        # 3. Device nodes + init
         sudo mknod -m 622 dev/console c 5 1
         sudo mknod -m 666 dev/null c 1 3
         sudo mknod -m 666 dev/tty c 5 0
 
-    - name: Create Init Script
+    - name: Create Init + xinitrc
       run: |
         cat << 'EOF' > workspace/rootfs/init
         #!/bin/sh
-        mount -t proc proc /proc
+        mount -t proc /proc
         mount -t sysfs sys /sys
         mount -t devtmpfs dev /dev
-        echo "Booting Minimal Linux..."
+        echo "Starting GUI..."
         exec /bin/sh
         EOF
         chmod +x workspace/rootfs/init
 
-    - name: Create Initramfs
+        cat << 'EOF' > workspace/rootfs/home/user/.xinitrc
+        #!/bin/sh
+        xterm &
+        exec flwm
+        EOF
+        chmod +x workspace/rootfs/home/user/.xinitrc
+
+    - name: Pack Initramfs + ISO
       run: |
         cd workspace/rootfs
         find . | cpio -H newc -o | gzip > ../iso/boot/initramfs.cpio.gz
-
-    - name: Configure Syslinux
-      run: |
-        cd workspace
-        # Buat folder konfigurasi bootloader di root ISO atau di bawah /boot/syslinux
-        mkdir -p iso/boot/syslinux
-  
-        # Salin file bootloader Syslinux dari sistem Ubuntu Runner ke folder yang benar
-        cp /usr/lib/ISOLINUX/isolinux.bin iso/boot/syslinux/
-        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 iso/boot/syslinux/
-  
-        # Buat konfigurasi syslinux di folder yang sama dengan isolinux.bin
-        cat << 'EOF' > iso/boot/syslinux/syslinux.cfg
-        DEFAULT minimal
-        LABEL minimal
-          KERNEL /boot/vmlinuz
-          APPEND initrd=/boot/initramfs.cpio.gz console=ttyS0 console=tty0
+        
+        mkdir -p ../iso/boot/isolinux
+        cp /usr/lib/ISOLINUX/isolinux.bin ../iso/boot/isolinux/
+        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 ../iso/boot/isolinux/
+        cat << 'EOF' > ../iso/boot/isolinux/isolinux.cfg
+        default gui
+        label gui
+          kernel /boot/vmlinuz
+          append initrd=/boot/initramfs.cpio.gz root=/dev/ram0 console=ttyS0
         EOF
-
-    - name: Create ISO
-      run: |
-        cd workspace
-        xorriso -as mkisofs -o minimal_linux.iso \
-          -b boot/isolinux/isolinux.bin \
-          -c boot/isolinux/boot.cat \
-          -no-emul-boot -boot-load-size 4 -boot-info-table \
-          iso
+        
+        cd ../
+        xorriso -as mkisofs -o minimal_gui.iso \
+          -b boot/isolinux/isolinux.bin -c boot/isolinux/boot.cat \
+          -no-emul-boot -boot-load-size 4 -boot-info-table iso
 
     - name: Upload ISO
       uses: actions/upload-artifact@v4
       with:
-        name: minimal-linux-iso
-        path: workspace/minimal_linux.iso
+        name: minimal-linux-gui-iso
+        path: workspace/minimal_gui.iso
