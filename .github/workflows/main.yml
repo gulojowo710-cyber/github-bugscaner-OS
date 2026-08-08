@@ -45,68 +45,9 @@ jobs:
         cd ../rootfs
         ln -sf toybox bin/sh
 
-        # 2. Download Xorg + FLWM + xterm dari Alpine 3.18
-        wget https://dl-cdn.alpinelinux.org/alpine/v3.18/main/x86_64/xorg-server-21.1.8-r0.apk
-        wget https://dl-cdn.alpinelinux.org/alpine/v3.18/community/x86_64/flwm-1.16-r0.apk
-        wget https://dl-cdn.alpinelinux.org/alpine/v3.18/main/x86_64/xterm-381-r0.apk
-    
-        # extract .apk = tar.gz
-        for f in *.apk; do tar -xzf $f -C .; done
-
-        # 3. Device nodes
-        sudo mknod -m 622 dev/console c 5 1
-        sudo mknod -m 666 dev/null c 1 3
-        sudo mknod -m 666 dev/tty c 5 0
         
-        # extract manual
-        for f in *.xbps; do tar xf $f -C .; done
-
-        # 3. Device nodes + init
-        sudo mknod -m 622 dev/console c 5 1
-        sudo mknod -m 666 dev/null c 1 3
-        sudo mknod -m 666 dev/tty c 5 0
-
-    - name: Create Init + xinitrc
-      run: |
-        cat << 'EOF' > workspace/rootfs/init
-        #!/bin/sh
-        mount -t proc /proc
-        mount -t sysfs sys /sys
-        mount -t devtmpfs dev /dev
-        echo "Starting GUI..."
-        exec /bin/sh
-        EOF
-        chmod +x workspace/rootfs/init
-
-        cat << 'EOF' > workspace/rootfs/home/user/.xinitrc
-        #!/bin/sh
-        xterm &
-        exec flwm
-        EOF
-        chmod +x workspace/rootfs/home/user/.xinitrc
-
-    - name: Pack Initramfs + ISO
-      run: |
-        cd workspace/rootfs
-        find . | cpio -H newc -o | gzip > ../iso/boot/initramfs.cpio.gz
-        
-        mkdir -p ../iso/boot/isolinux
-        cp /usr/lib/ISOLINUX/isolinux.bin ../iso/boot/isolinux/
-        cp /usr/lib/syslinux/modules/bios/ldlinux.c32 ../iso/boot/isolinux/
-        cat << 'EOF' > ../iso/boot/isolinux/isolinux.cfg
-        default gui
-        label gui
-          kernel /boot/vmlinuz
-          append initrd=/boot/initramfs.cpio.gz root=/dev/ram0 console=ttyS0
-        EOF
-        
-        cd ../
-        xorriso -as mkisofs -o minimal_gui.iso \
-          -b boot/isolinux/isolinux.bin -c boot/isolinux/boot.cat \
-          -no-emul-boot -boot-load-size 4 -boot-info-table iso
-
-    - name: Upload ISO
+    - name: Upload kernel+toybox
       uses: actions/upload-artifact@v4
       with:
         name: minimal-linux-gui-iso
-        path: workspace/minimal_gui.iso
+        path: workspace/minimal_gui
